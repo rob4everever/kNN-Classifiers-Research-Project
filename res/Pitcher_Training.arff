@@ -1,0 +1,19 @@
+@RELATION Pitcher
+
+@attribute Length NUMERIC
+@attribute Width NUMERIC
+@attribute class {Truncata,Raja}
+@DATA
+
+9, 13, Truncata
+5, 14, Raja
+7, 14, Truncata
+6, 11, Raja
+6, 12, Raja
+5, 12, Raja
+8, 15, Raja
+6, 15, Truncata
+8, 13, Raja
+7, 12, Truncata
+4, 13, Raja
+9, 16, Truncata
