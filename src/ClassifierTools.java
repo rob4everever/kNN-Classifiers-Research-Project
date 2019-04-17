@@ -7,6 +7,7 @@
 
 import java.io.FileReader;
 import java.util.concurrent.ThreadLocalRandom;
+import org.jetbrains.annotations.Nullable;
 import weka.core.Instance;
 import weka.core.Instances;
 
@@ -17,6 +18,8 @@ public class ClassifierTools {
      * @param filePath - location of .arff file
      * @return Instances object
      */
+
+    @Nullable
     public static Instances loadClassifierData(String filePath) {
 
         Instances data;
@@ -56,11 +59,12 @@ public class ClassifierTools {
      * @return the index with the highest tally
      */
     public static double findHigestTally(double[] classRepresentationTally){
-        double highestTallyIndex = 0;
+
+        int highestTallyIndex = 0;
         double highestValue = classRepresentationTally[0];
         //Loop through the tally and find the most represented class
-        for(int i = 0; i < classRepresentationTally.length; i++){
-            if(classRepresentationTally[i] > highestValue){
+        for(int i = 1; i < classRepresentationTally.length; i++){
+            if(classRepresentationTally[i] > classRepresentationTally[highestTallyIndex]){
                 highestTallyIndex = i;
             }
         }

@@ -8,197 +8,270 @@
  */
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 import weka.classifiers.AbstractClassifier;
-import weka.classifiers.Classifier;
 import weka.core.Instance;
 import weka.core.Instances;
 
 public class KNN extends AbstractClassifier {
 
-    public Instances getTrainingData() {
-        return trainingData;
-    }
-
-    public void setTrainingData(Instances trainingData) {
-        this.trainingData = trainingData;
-    }
-
-    //classifier fields
+    //Classifier settings
+    private int k;
     private Instances trainingData;
     private Instances standardisedTrainingData;
-    private int k;
-    private double[] classRepresentationTally;
+    private double[] distributionForInstance;
 
-    //config flags
-    private boolean standardise;
-    private boolean loocValidation;
+    //Classifier config flags
+    private boolean standardised;
+    private boolean LOOCValidation;
     private boolean weightedVoting;
 
     /**
-     * default constructor that sets the value of k to 1 and sets the
-     * config flags to their default value
+     * Creates a KNN classifier with default values
      */
     public KNN(){
+        //default classifier settings
         this.k = 1;
-        this.standardise = true;
-        this.loocValidation = false;
+        this.standardised = false;
+        this.LOOCValidation = false;
         this.weightedVoting = false;
     }
 
     /**
-     * constructor that sets the value of k to a custom value
-     * @param k - value of k
-     * @param standardise - flag that enables/disables data standardisation
-     * @param loocValidation - flag that enables/disables leave one out cross validation
-     * @param weightedVoting = flag that enables/disables a weighted voting scheme
-     */
-    public KNN(int k, boolean standardise, boolean loocValidation, boolean weightedVoting) {
-        this.k = k;
-        this.standardise = standardise;
-        this.loocValidation = loocValidation;
-        this.weightedVoting = weightedVoting;
-    }
-
-    /**
-     * stores the training data
+     * Trains the classifier with the training data or a standardised
+     * version of the training data
      * @param instances - training data
-     * @throws Exception - thrown if the data set file cannot be found
+     * @throws Exception NullPointerException
      */
     @Override
     public void buildClassifier(Instances instances) throws Exception {
-        Instances standardisedTrainingData = new Instances(instances);
 
-        //set k with looc validation
-        if(this.loocValidation){
-            //set k to 20% of of training size or 100, whichever is smaller
-            double maxK =Math.min(instances.numInstances()*(20-100), 100);
-            //values between 1 and maxK are the validation set
-            //remaining instances are the training set
-            //do a thing to get the best value of k
-            //increment k from 1-maxK and do some tests to find the best value of k
-        }
+        if(this.standardised){
 
-        //standardises the training data
-        if(this.standardise) {
+            this.standardisedTrainingData = new Instances(this.trainingData);
+
             for(int i = 0; i < instances.numAttributes()-1; i++){
 
                 double mean = ClassifierTools.getMean(instances, i);
                 double stddev = ClassifierTools.getStandardDeviation(instances, i);
 
                 //loop through each value and standardise it
-                for(Instance in : standardisedTrainingData){
-                    double standardisedValue = (in.value(i) - mean) / stddev;
-                    in.setValue(i, standardisedValue);
+                for(Instance trainingInstance: this.standardisedTrainingData){
+                    double standardisedValue = (trainingInstance.value(i) - mean) / stddev;
+                    trainingInstance.setValue(i, standardisedValue);
                 }
             }
-            this.trainingData = standardisedTrainingData;
         }
-        //Un-standardised
-        else {
+        else{
             this.trainingData = instances;
         }
     }
 
-    public boolean isStandardise() {
-        return standardise;
-    }
+    /**
+     *
+     * @param testInstance
+     * @return
+     */
+    @Override
+    public double classifyInstance(Instance testInstance){
 
-    public void setStandardise(boolean standardise) {
-        this.standardise = standardise;
-    }
+        ArrayList<Instance> kNearestNeighbours = getKNearestNeighbours(testInstance);
 
-    public boolean isLoocValidation() {
-        return loocValidation;
-    }
+        //determine most represented class in list
+        double[] classTally = new double[this.trainingData.numClasses()];
+        Arrays.fill(classTally, 0.0);
+        for(Instance instance : kNearestNeighbours){
+            if(this.weightedVoting){
+                double voteWeight = 1/(ClassifierTools.getDistance(instance, testInstance));
+                classTally[(int)instance.classValue()]+=voteWeight;
+            }
+            else{
+                classTally[(int)instance.classValue()]++;
+            }
+        }
 
-    public void setLoocValidation(boolean loocValidation) {
-        this.loocValidation = loocValidation;
-    }
-
-    public boolean isWeightedVoting() {
-        return weightedVoting;
-    }
-
-    public void setWeightedVoting(boolean weightedVoting) {
-        this.weightedVoting = weightedVoting;
+        this.distributionForInstance = classTally;
+        return ClassifierTools.findHigestTally(classTally);
     }
 
     /**
-     * Predicts the category of a given instance using the k-NN algorithm
-     * @param testInstance - instance to predict the category of
-     * @return the predicted class valye
+     * Calculate the proportion of class representation
+     * @param instance
+     * @return
      */
     @Override
-    public double classifyInstance(Instance testInstance) {
+    public double[] distributionForInstance(Instance instance){
 
-        //K closest neighbours
+        double[] classTally = new double[this.trainingData.numClasses()];
+
+        for(int i = 0; i < distributionForInstance.length; i++){
+            classTally[i] = distributionForInstance[i] / this.k;
+        }
+
+        return classTally;
+    }
+
+    /**
+     * Finds the k nearest neighbours to an instance
+     * @param instance
+     * @return k closest neighbours
+     */
+    public ArrayList<Instance> getKNearestNeighbours(Instance instance){
+
         ArrayList<Instance> kNearestNeighbours = new ArrayList<>();
-        //A copy of the training dat
-        Instances tempTrainingData = new Instances(this.trainingData);
+        Instances tempTrainingData;
 
-        //Get the k nearest neighbours to the test care and store them in a list
+        if(this.standardised){
+            tempTrainingData = new Instances(this.standardisedTrainingData);
+        }
+        else{
+            tempTrainingData = new Instances(this.trainingData);
+
+        }
+
+        //find K nearest neighbours
         for(int i = 0; i < this.k; i++){
 
             Instance currentSmallest = tempTrainingData.firstInstance();
             int currentSmallestIndex = 0;
 
-            for(int j = 0; j < tempTrainingData.size(); j++){
-
-                double distance = ClassifierTools.getDistance(tempTrainingData.get(j), testInstance);
-
-                if(ClassifierTools.getDistance(currentSmallest, testInstance) > distance){
+            for(int j = 0; j < tempTrainingData.size(); j++) {
+                double distance = ClassifierTools.getDistance(tempTrainingData.get(j), instance);
+                if (ClassifierTools.getDistance(currentSmallest, instance) > distance) {
                     currentSmallest = tempTrainingData.get(j);
                     currentSmallestIndex = j;
                 }
-                //if many distances are equally as close then choose one at random to be the closest
-                else if (ClassifierTools.getDistance(currentSmallest, testInstance) == distance){
+                //if multiple neighbours have the same distance then pick one at random
+                else if (ClassifierTools.getDistance(currentSmallest, instance) == distance){
                     if(ThreadLocalRandom.current().nextInt(0, 1 + 1) > 0.5){
                         currentSmallest = tempTrainingData.get(j);
                         currentSmallestIndex = j;
                     }
                 }
             }
-            tempTrainingData.remove(currentSmallestIndex);
             kNearestNeighbours.add(currentSmallest);
+            tempTrainingData.delete(currentSmallestIndex);
         }
 
-        double [] classRepresentationTally = new double[this.trainingData.numClasses()];
-
-        for(Instance x : kNearestNeighbours){
-        }
-
-        //give each neighbour an equal vote
-        for (Instance key : kNearestNeighbours) {
-            classRepresentationTally[(int) key.classValue()]++;
-        }
-
-        this.classRepresentationTally = classRepresentationTally;
-        return ClassifierTools.findHigestTally(classRepresentationTally);
+        return kNearestNeighbours;
     }
 
     /**
-     * Returns the class proprtion of neighbours that voted for a particular class
-     * @return class distribution as double array
+     * Get the value of k
+     * @return
      */
-    //TODO: This should be proportion. i.e. (1/5%, 2/5%, 2/5%)
-    public double[] distributionForInstance(){
-        return this.classRepresentationTally;
+    public int getK() {
+        return k;
     }
 
     /**
-     * sets the k value
-     * @param k - how many closest neighbours the classifier uses
+     * Set the value of k
+     * @param k
      */
     public void setK(int k) {
         this.k = k;
     }
 
     /**
-     * return the k value
-     * @return k
+     * Get training data
+     * @return training data
      */
-    public int getK() {
-        return this.k;
+    public Instances getTrainingData() {
+        return trainingData;
+    }
+
+    /**
+     * Get standardised training data
+     * @return standardised data
+     */
+    public Instances getStandardisedTrainingData() {
+        return standardisedTrainingData;
+    }
+
+    /**
+     *
+     * @param standardisedTrainingData
+     */
+    public void setStandardisedTrainingData(Instances standardisedTrainingData) {
+        this.standardisedTrainingData = standardisedTrainingData;
+    }
+
+    /**
+     *
+     * @return
+     */
+    public double[] getDistributionForInstance() {
+        return distributionForInstance;
+    }
+
+    /**
+     *
+     * @param distributionForInstance
+     */
+    public void setDistributionForInstance(double[] distributionForInstance) {
+        this.distributionForInstance = distributionForInstance;
+    }
+
+    /**
+     * Return true if standardising is set, otherwise false
+     * @return
+     */
+    public boolean isStandardised() {
+        return standardised;
+    }
+
+    /**
+     *
+     * @param standardised
+     */
+    public void setStandardised(boolean standardised) {
+        this.standardised = standardised;
+    }
+
+    /**
+     * Return true if LOOC validation is set, otherwise false
+     * @return
+     */
+    public boolean isLOOCValidation() {
+        return LOOCValidation;
+    }
+
+    /**
+     *
+     * @param LOOCValidation
+     */
+    public void setLOOCValidation(boolean LOOCValidation) {
+        this.LOOCValidation = LOOCValidation;
+    }
+
+    /**
+     * Return true if weighted voting is set, otherwise false
+     * @return if weighted voting
+     */
+    public boolean isWeightedVoting() {
+        return weightedVoting;
+    }
+
+    /**
+     * Set weighted voting
+     * @param weightedVoting
+     */
+    public void setWeightedVoting(boolean weightedVoting) {
+        this.weightedVoting = weightedVoting;
+    }
+
+    /**
+     * Returns the classifier as a string
+     * @return clasifer configuration
+     */
+    @Override
+    public String toString() {
+        return "KNN{" +
+            "k=" + k +
+            ", standardised=" + standardised +
+            ", LOOCValidation=" + LOOCValidation +
+            ", weightedVoting=" + weightedVoting +
+            '}';
     }
 }
